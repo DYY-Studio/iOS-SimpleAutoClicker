@@ -8,9 +8,26 @@
 @property (nonatomic, assign) CGFloat x;
 @property (nonatomic, assign) CGFloat y;
 @property (nonatomic, strong) UIView *indicatorView; // 屏幕上的指示红点
+
+- (NSDictionary *)toDictionary;
+- (void)updateWithDictionary:(NSDictionary *)dict;
 @end
 
 @implementation TapPointModel
+- (NSDictionary *)toDictionary {
+    return @{
+        @"isEnabled": @(self.isEnabled),
+        @"x": @(self.x),
+        @"y": @(self.y)
+    };
+}
+
+- (void)updateWithDictionary:(NSDictionary *)dict {
+    if (!dict) return;
+    self.isEnabled = [dict[@"isEnabled"] boolValue];
+    self.x = [dict[@"x"] floatValue];
+    self.y = [dict[@"y"] floatValue];
+}
 @end
 
 @interface FloatingOverlayWindow : UIWindow
@@ -56,18 +73,64 @@
     return instance;
 }
 
+- (NSString *)settingsKeyForCurrentApp {
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if (!bundleID) bundleID = @"unknown_app";
+    return [NSString stringWithFormat:@"AutoClicker_Settings_%@", bundleID];
+}
+
+// 保存设置
+- (void)saveSettings {
+    NSMutableArray *pointsArray = [NSMutableArray array];
+    for (TapPointModel *model in self.points) {
+        [pointsArray addObject:[model toDictionary]];
+    }
+    
+    NSDictionary *settings = @{
+        @"clickInterval": @(self.clickInterval),
+        @"points": pointsArray
+    };
+    
+    [[NSUserDefaults standardUserDefaults] setObject:settings forKey:[self settingsKeyForCurrentApp]];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+// 读取设置
+- (void)loadSettings {
+    NSDictionary *settings = [[NSUserDefaults standardUserDefaults] dictionaryForKey:[self settingsKeyForCurrentApp]];
+    
+    if (settings) {
+        // 如果有保存的记录，就读取
+        if (settings[@"clickInterval"]) {
+            self.clickInterval = [settings[@"clickInterval"] floatValue];
+        }
+        
+        NSArray *pointsArray = settings[@"points"];
+        if (pointsArray && pointsArray.count == 10) {
+            for (int i = 0; i < 10; i++) {
+                [self.points[i] updateWithDictionary:pointsArray[i]];
+            }
+        }
+    } else {
+        self.clickInterval = 0.1;
+        CGSize screenSize = [UIScreen mainScreen].bounds.size;
+        for (int i = 0; i < 10; i++) {
+            self.points[i].isEnabled = NO;
+            self.points[i].x = screenSize.width / 2;
+            self.points[i].y = screenSize.height / 2;
+        }
+    }
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
         _clickInterval = 0.1; // 默认 0.1 秒
         _points = [NSMutableArray array];
         for (int i = 0; i < 10; i++) {
-            TapPointModel *model = [[TapPointModel alloc] init];
-            model.isEnabled = NO;
-            model.x = [UIScreen mainScreen].bounds.size.width / 2;
-            model.y = [UIScreen mainScreen].bounds.size.height / 2;
-            [_points addObject:model];
+            [_points addObject:[[TapPointModel alloc] init]];
         }
+		[self loadSettings];
     }
     return self;
 }
@@ -90,7 +153,7 @@
         indicator.backgroundColor = [[UIColor redColor] colorWithAlphaComponent:0.6];
         indicator.layer.cornerRadius = 10;
         indicator.center = CGPointMake(model.x, model.y);
-        indicator.hidden = YES;
+        indicator.hidden = !model.isEnabled;
         indicator.userInteractionEnabled = NO; // 不阻挡点击
         
         UILabel *numLbl = [[UILabel alloc] initWithFrame:indicator.bounds];
@@ -141,13 +204,21 @@
         
         UISwitch *enableSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(120, currentY, 50, 30)];
         enableSwitch.tag = i;
+		enableSwitch.on = self.points[i].isEnabled;
         [enableSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:enableSwitch];
         
         currentY += 40;
-        
+
+		// X 轴标签
+		UILabel *xLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 30, 30)];
+		xLbl.text = @"X";
+		xLbl.textColor = [UIColor whiteColor];
+		xLbl.font = [UIFont boldSystemFontOfSize:16];
+		[scrollView addSubview:xLbl];
+
         // X 轴滑块
-        UISlider *xSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY, scrollView.frame.size.width - 40, 30)];
+        UISlider *xSlider = [[UISlider alloc] initWithFrame:CGRectMake(20 + 30, currentY, scrollView.frame.size.width - 40 - 30, 30)];
         xSlider.minimumValue = 0;
         xSlider.maximumValue = screenSize.width;
         xSlider.value = self.points[i].x;
@@ -156,9 +227,16 @@
         [scrollView addSubview:xSlider];
         
         currentY += 40;
+
+		// Y 轴标签
+		UILabel *yLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 30, 30)];
+		yLbl.text = @"Y";
+		yLbl.textColor = [UIColor whiteColor];
+		yLbl.font = [UIFont boldSystemFontOfSize:16];
+		[scrollView addSubview:yLbl];
         
         // Y 轴滑块
-        UISlider *ySlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY, scrollView.frame.size.width - 40, 30)];
+        UISlider *ySlider = [[UISlider alloc] initWithFrame:CGRectMake(20 + 30, currentY, scrollView.frame.size.width - 40 - 30, 30)];
         ySlider.minimumValue = 0;
         ySlider.maximumValue = screenSize.height;
         ySlider.value = self.points[i].y;
@@ -235,6 +313,7 @@
 - (void)intervalChanged:(UISlider *)slider {
     self.clickInterval = slider.value;
 	self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
+	[self saveSettings];
     if (self.isRunning) {
         // 重启定时器以应用新间隔
         [self stopClicking];
@@ -246,6 +325,8 @@
     NSInteger index = sender.tag;
     self.points[index].isEnabled = sender.isOn;
     self.points[index].indicatorView.hidden = !sender.isOn; // 同步显示/隐藏指示点
+
+	[self saveSettings];
 }
 
 - (void)sliderChanged:(UISlider *)sender {
@@ -259,6 +340,8 @@
         self.points[index].x = sender.value;
     }
     self.points[index].indicatorView.center = CGPointMake(self.points[index].x, self.points[index].y);
+
+	[self saveSettings];
 }
 
 #pragma mark - 连点核心逻辑
