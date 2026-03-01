@@ -54,6 +54,8 @@
 @property (nonatomic, strong) UIView *settingsPanel;    // 设置面板
 @property (nonatomic, strong) UIButton *toggleBtn;      // 启动/停止按钮
 @property (nonatomic, strong) UILabel *intervalLbl;
+@property (nonatomic, strong) NSMutableArray<UISlider *> *xSliders;
+@property (nonatomic, strong) NSMutableArray<UISlider *> *ySliders;
 @property (nonatomic, strong) NSMutableArray<TapPointModel *> *points;
 @property (nonatomic, assign) CGFloat clickInterval;    // 全局点击间隔 (秒)
 @property (nonatomic, assign) BOOL isRunning;
@@ -137,6 +139,8 @@
 
 - (void)setupUI {
     if (self.overlayWindow) return;
+	self.xSliders = [NSMutableArray arrayWithCapacity:10];
+	self.ySliders = [NSMutableArray arrayWithCapacity:10];
     
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     
@@ -145,7 +149,7 @@
     self.overlayWindow.windowLevel = UIWindowLevelAlert + 2;
     self.overlayWindow.hidden = NO;
     self.overlayWindow.backgroundColor = [UIColor clearColor];
-    
+
     // 2. 初始化预设点位的视觉指示器 (初始隐藏)
     for (int i = 0; i < 10; i++) {
         TapPointModel *model = self.points[i];
@@ -167,14 +171,23 @@
         model.indicatorView = indicator;
     }
     
+	CGFloat panelMaxWidth = MIN(screenSize.width - 40, 350);
+    CGFloat panelMaxHeight = MIN(screenSize.height - 80, 650);
+
     // 3. 设置面板 (隐藏状态)
-    self.settingsPanel = [[UIView alloc] initWithFrame:CGRectMake(20, 100, screenSize.width - 40, screenSize.height - 200)];
-    self.settingsPanel.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.6];
+    self.settingsPanel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, panelMaxWidth, panelMaxHeight)];
+	self.settingsPanel.center = self.overlayWindow.center;
+    self.settingsPanel.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.5];
     self.settingsPanel.layer.cornerRadius = 15;
     self.settingsPanel.hidden = YES;
+	self.settingsPanel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | 
+                                          UIViewAutoresizingFlexibleRightMargin | 
+                                          UIViewAutoresizingFlexibleTopMargin | 
+                                          UIViewAutoresizingFlexibleBottomMargin;
     [self.overlayWindow addSubview:self.settingsPanel];
     
     UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:self.settingsPanel.bounds];
+	scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.settingsPanel addSubview:scrollView];
     
     CGFloat currentY = 20;
@@ -189,6 +202,7 @@
     intervalSlider.minimumValue = 0.05;
     intervalSlider.maximumValue = 2.0;
     intervalSlider.value = self.clickInterval;
+	intervalSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [intervalSlider addTarget:self action:@selector(intervalChanged:) forControlEvents:UIControlEventValueChanged];
     [scrollView addSubview:intervalSlider];
     
@@ -223,8 +237,10 @@
         xSlider.maximumValue = screenSize.width;
         xSlider.value = self.points[i].x;
         xSlider.tag = 100 + i; // 加 100 区分 X
+		xSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [xSlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:xSlider];
+		[self.xSliders addObject:xSlider];
         
         currentY += 40;
 
@@ -241,13 +257,16 @@
         ySlider.maximumValue = screenSize.height;
         ySlider.value = self.points[i].y;
         ySlider.tag = 200 + i; // 加 200 区分 Y
+		ySlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [ySlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:ySlider];
+		[self.ySliders addObject:ySlider];
         
         currentY += 40;
         
         UIView *line = [[UIView alloc] initWithFrame:CGRectMake(10, currentY, scrollView.frame.size.width - 20, 1)];
         line.backgroundColor = [UIColor darkGrayColor];
+		line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [scrollView addSubview:line];
         
         currentY += 20;
@@ -277,9 +296,59 @@
     [self.toggleBtn setTitle:@"▶️" forState:UIControlStateNormal];
     [self.toggleBtn addTarget:self action:@selector(toggleAutoClick) forControlEvents:UIControlEventTouchUpInside];
     [self.controlBar addSubview:self.toggleBtn];
+
+	[[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+	[[NSNotificationCenter defaultCenter] addObserver:self 
+                                             selector:@selector(handleDeviceRotation) 
+                                                 name:UIDeviceOrientationDidChangeNotification 
+                                               object:nil];
 }
 
 #pragma mark - 交互逻辑
+
+- (void)handleDeviceRotation {
+    if (!self.overlayWindow) return;
+    
+    CGSize targetSize = [UIScreen mainScreen].bounds.size;
+    
+    self.overlayWindow.frame = CGRectMake(0, 0, targetSize.width, targetSize.height);
+	self.settingsPanel.center = self.overlayWindow.center;
+
+	NSLog(@"[AutoClicker] Device rotated. New size: %f x %f", targetSize.width, targetSize.height);
+    
+    for (int i = 0; i < 10; i++) {
+        UISlider *xSlider = self.xSliders[i];
+        UISlider *ySlider = self.ySliders[i];
+        
+        if (xSlider) xSlider.maximumValue = targetSize.width;
+        if (ySlider) ySlider.maximumValue = targetSize.height;
+        
+        self.points[i].x = MIN(self.points[i].x, targetSize.width);
+        self.points[i].y = MIN(self.points[i].y, targetSize.height);
+
+        if (xSlider) xSlider.value = self.points[i].x;
+        if (ySlider) ySlider.value = self.points[i].y;
+
+        self.points[i].indicatorView.center = CGPointMake(self.points[i].x, self.points[i].y);
+    }
+    
+    [self clampControlBarToScreen];
+}
+
+- (void)clampControlBarToScreen {
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    CGFloat halfWidth = self.controlBar.bounds.size.width / 2.0;
+    CGFloat halfHeight = self.controlBar.bounds.size.height / 2.0;
+    CGFloat margin = 5.0;
+    
+    CGPoint currentCenter = self.controlBar.center;
+    currentCenter.x = MAX(halfWidth + margin, MIN(currentCenter.x, screenSize.width - halfWidth - margin));
+    currentCenter.y = MAX(halfHeight + 30.0, MIN(currentCenter.y, screenSize.height - halfHeight - 20.0));
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        self.controlBar.center = currentCenter;
+    }];
+}
 
 - (void)handlePan:(UIPanGestureRecognizer *)recognizer {
     UIView *panView = recognizer.view;
@@ -304,6 +373,7 @@
     
     panView.center = newCenter;
     [recognizer setTranslation:CGPointZero inView:self.overlayWindow];
+	[self clampControlBarToScreen];
 }
 
 - (void)toggleSettings {
