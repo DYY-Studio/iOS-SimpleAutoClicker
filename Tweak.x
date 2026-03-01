@@ -25,6 +25,10 @@
     }
     return hitView;
 }
+
+- (BOOL)_canAffectStatusBarAppearance {
+    return NO;
+}
 @end
 
 @interface AutoClickerManager : NSObject
