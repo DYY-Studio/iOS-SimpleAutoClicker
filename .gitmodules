@@ -1,0 +1,3 @@
+[submodule "ZSFakeTouch"]
+	path = ZSFakeTouch
+	url = https://github.com/DYY-Studio/ZSFakeTouch.git
