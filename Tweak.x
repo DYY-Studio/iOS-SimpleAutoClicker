@@ -204,10 +204,27 @@
 #pragma mark - 交互逻辑
 
 - (void)handlePan:(UIPanGestureRecognizer *)recognizer {
+    UIView *panView = recognizer.view;
     CGPoint translation = [recognizer translationInView:self.overlayWindow];
-    CGPoint newCenter = CGPointMake(recognizer.view.center.x + translation.x,
-                                    recognizer.view.center.y + translation.y);
-    recognizer.view.center = newCenter;
+    
+    CGPoint newCenter = CGPointMake(panView.center.x + translation.x,
+                                    panView.center.y + translation.y);
+    
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    CGFloat halfWidth = panView.bounds.size.width / 2.0;
+    CGFloat halfHeight = panView.bounds.size.height / 2.0;
+    
+    CGFloat margin = 5.0; 
+    
+    CGFloat minX = halfWidth + margin;
+    CGFloat maxX = screenSize.width - halfWidth - margin;
+    CGFloat minY = halfHeight + 30.0; 
+    CGFloat maxY = screenSize.height - halfHeight - 20.0;
+    
+    newCenter.x = MAX(minX, MIN(newCenter.x, maxX));
+    newCenter.y = MAX(minY, MIN(newCenter.y, maxY));
+    
+    panView.center = newCenter;
     [recognizer setTranslation:CGPointZero inView:self.overlayWindow];
 }
 
