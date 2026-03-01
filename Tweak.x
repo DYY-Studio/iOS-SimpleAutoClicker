@@ -2,13 +2,6 @@
 #include <dlfcn.h>
 #import "ZSFakeTouch/ZSFakeTouchDome/ZSFakeTouch/ZSFakeTouch.h"
 
-// --- ZSFakeTouch 接口声明 ---
-// @interface ZSFakeTouch : NSObject
-// + (NSInteger)beginTouchWithPoint:(CGPoint)point;
-// + (void)moveTouchWithPoint:(CGPoint)point traceId:(NSInteger)traceId;
-// + (void)endTouchWithPoint:(CGPoint)point traceId:(NSInteger)traceId;
-// @end
-
 // --- 预设 10 个点的数据模型 ---
 @interface TapPointModel : NSObject
 @property (nonatomic, assign) BOOL isEnabled;
