@@ -8,6 +8,8 @@
 @property (nonatomic, assign) CGFloat x;
 @property (nonatomic, assign) CGFloat y;
 @property (nonatomic, strong) UIView *indicatorView; // 屏幕上的指示红点
+@property (nonatomic, strong) UISlider *xSlider;
+@property (nonatomic, strong) UISlider *ySlider;
 
 - (NSDictionary *)toDictionary;
 - (void)updateWithDictionary:(NSDictionary *)dict;
@@ -54,10 +56,12 @@
 @property (nonatomic, strong) UIView *settingsPanel;    // 设置面板
 @property (nonatomic, strong) UIButton *toggleBtn;      // 启动/停止按钮
 @property (nonatomic, strong) UILabel *intervalLbl;
-@property (nonatomic, strong) NSMutableArray<UISlider *> *xSliders;
-@property (nonatomic, strong) NSMutableArray<UISlider *> *ySliders;
+@property (nonatomic, strong) UILabel *durationLbl;
+@property (nonatomic, strong) UISlider *intervalSlider;
+@property (nonatomic, strong) UISlider *durationSlider;
 @property (nonatomic, strong) NSMutableArray<TapPointModel *> *points;
 @property (nonatomic, assign) CGFloat clickInterval;    // 全局点击间隔 (秒)
+@property (nonatomic, assign) CGFloat clickDuration;	// 点击时长 (秒)
 @property (nonatomic, assign) BOOL isRunning;
 @property (nonatomic, strong) dispatch_source_t timer;  // GCD定时器
 + (instancetype)sharedInstance;
@@ -90,6 +94,7 @@
     
     NSDictionary *settings = @{
         @"clickInterval": @(self.clickInterval),
+		@"clickDuration": @(self.clickDuration),
         @"points": pointsArray
     };
     
@@ -106,6 +111,9 @@
         if (settings[@"clickInterval"]) {
             self.clickInterval = [settings[@"clickInterval"] floatValue];
         }
+		if (settings[@"clickDuration"]) {
+			self.clickDuration = [settings[@"clickDuration"] floatValue];
+		}
         
         NSArray *pointsArray = settings[@"points"];
         if (pointsArray && pointsArray.count == 10) {
@@ -115,6 +123,7 @@
         }
     } else {
         self.clickInterval = 0.1;
+		self.clickDuration = 0.03;
         CGSize screenSize = [UIScreen mainScreen].bounds.size;
         for (int i = 0; i < 10; i++) {
             self.points[i].isEnabled = NO;
@@ -122,12 +131,14 @@
             self.points[i].y = screenSize.height / 2;
         }
     }
+	[self clampIntervalToDuration];
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
         _clickInterval = 0.1; // 默认 0.1 秒
+		_clickDuration = 0.03; // 默认 0.03 秒
         _points = [NSMutableArray array];
         for (int i = 0; i < 10; i++) {
             [_points addObject:[[TapPointModel alloc] init]];
@@ -139,8 +150,6 @@
 
 - (void)setupUI {
     if (self.overlayWindow) return;
-	self.xSliders = [NSMutableArray arrayWithCapacity:10];
-	self.ySliders = [NSMutableArray arrayWithCapacity:10];
     
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     
@@ -198,18 +207,36 @@
     self.intervalLbl.textColor = [UIColor whiteColor];
     [scrollView addSubview:self.intervalLbl];
     
-    UISlider *intervalSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY + 30, scrollView.frame.size.width - 40, 30)];
-    intervalSlider.minimumValue = 0.05;
-    intervalSlider.maximumValue = 2.0;
-    intervalSlider.value = self.clickInterval;
-	intervalSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [intervalSlider addTarget:self action:@selector(intervalChanged:) forControlEvents:UIControlEventValueChanged];
-    [scrollView addSubview:intervalSlider];
+    self.intervalSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY + 30, scrollView.frame.size.width - 40, 30)];
+    self.intervalSlider.minimumValue = 0.05;
+    self.intervalSlider.maximumValue = 2.0;
+    self.intervalSlider.value = self.clickInterval;
+	self.intervalSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [self.intervalSlider addTarget:self action:@selector(intervalChanged:) forControlEvents:UIControlEventValueChanged];
+    [scrollView addSubview:self.intervalSlider];
     
     currentY += 80;
+
+	// 全局点击时长设置
+	self.durationLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 200, 30)];
+	self.durationLbl.text = [NSString stringWithFormat:@"单次点击时长: %.4f s", self.clickDuration];
+	self.durationLbl.textColor = [UIColor whiteColor];
+	[scrollView addSubview:self.durationLbl];
+
+	self.durationSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY + 30, scrollView.frame.size.width - 40, 30)];
+	self.durationSlider.minimumValue = 0.0;
+	self.durationSlider.maximumValue = 0.10;
+	self.durationSlider.value = self.clickDuration;
+	self.durationSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+	[self.durationSlider addTarget:self action:@selector(durationChanged:) forControlEvents:UIControlEventValueChanged];
+	[scrollView addSubview:self.durationSlider];
+
+	currentY += 80;
     
     // 10个点的设置生成
     for (int i = 0; i < 10; i++) {
+		TapPointModel *model = self.points[i];
+
         UILabel *titleLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 100, 30)];
         titleLbl.text = [NSString stringWithFormat:@"点位 %d", i+1];
         titleLbl.textColor = [UIColor whiteColor];
@@ -218,7 +245,7 @@
         
         UISwitch *enableSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(120, currentY, 50, 30)];
         enableSwitch.tag = i;
-		enableSwitch.on = self.points[i].isEnabled;
+		enableSwitch.on = model.isEnabled;
         [enableSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:enableSwitch];
         
@@ -235,12 +262,13 @@
         UISlider *xSlider = [[UISlider alloc] initWithFrame:CGRectMake(20 + 30, currentY, scrollView.frame.size.width - 40 - 30, 30)];
         xSlider.minimumValue = 0;
         xSlider.maximumValue = screenSize.width;
-        xSlider.value = self.points[i].x;
+        xSlider.value = model.x;
         xSlider.tag = 100 + i; // 加 100 区分 X
 		xSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [xSlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:xSlider];
-		[self.xSliders addObject:xSlider];
+		// [self.xSliders addObject:xSlider];
+		model.xSlider = xSlider;
         
         currentY += 40;
 
@@ -255,12 +283,13 @@
         UISlider *ySlider = [[UISlider alloc] initWithFrame:CGRectMake(20 + 30, currentY, scrollView.frame.size.width - 40 - 30, 30)];
         ySlider.minimumValue = 0;
         ySlider.maximumValue = screenSize.height;
-        ySlider.value = self.points[i].y;
+        ySlider.value = model.y;
         ySlider.tag = 200 + i; // 加 200 区分 Y
 		ySlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         [ySlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [scrollView addSubview:ySlider];
-		[self.ySliders addObject:ySlider];
+		// [self.ySliders addObject:ySlider];
+		model.ySlider = ySlider;
         
         currentY += 40;
         
@@ -314,22 +343,23 @@
     self.overlayWindow.frame = CGRectMake(0, 0, targetSize.width, targetSize.height);
 	self.settingsPanel.center = self.overlayWindow.center;
 
-	NSLog(@"[AutoClicker] Device rotated. New size: %f x %f", targetSize.width, targetSize.height);
+	// NSLog(@"[AutoClicker] Device rotated. New size: %f x %f", targetSize.width, targetSize.height);
     
     for (int i = 0; i < 10; i++) {
-        UISlider *xSlider = self.xSliders[i];
-        UISlider *ySlider = self.ySliders[i];
+		TapPointModel *model = self.points[i];
+        UISlider *xSlider = model.xSlider;
+        UISlider *ySlider = model.ySlider;
         
         if (xSlider) xSlider.maximumValue = targetSize.width;
         if (ySlider) ySlider.maximumValue = targetSize.height;
         
-        self.points[i].x = MIN(self.points[i].x, targetSize.width);
-        self.points[i].y = MIN(self.points[i].y, targetSize.height);
+        model.x = MIN(model.x, targetSize.width);
+        model.y = MIN(model.y, targetSize.height);
 
-        if (xSlider) xSlider.value = self.points[i].x;
-        if (ySlider) ySlider.value = self.points[i].y;
+        if (xSlider) xSlider.value = model.x;
+        if (ySlider) ySlider.value = model.y;
 
-        self.points[i].indicatorView.center = CGPointMake(self.points[i].x, self.points[i].y);
+        model.indicatorView.center = CGPointMake(model.x, model.y);
     }
     
     [self clampControlBarToScreen];
@@ -385,6 +415,27 @@
 	self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
 	[self saveSettings];
     if (self.isRunning) {
+        // 重启定时器以应用新间隔
+        [self stopClicking];
+        [self startClicking];
+    }
+}
+
+- (void)clampIntervalToDuration {
+	self.intervalSlider.minimumValue = self.clickDuration + 0.01;
+	if (self.clickDuration >= self.clickInterval) {
+		self.clickInterval = self.clickDuration + 0.01;
+		self.intervalSlider.value = self.clickInterval;
+		self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
+	}
+}
+
+- (void)durationChanged:(UISlider *)slider {
+    self.clickDuration = slider.value;
+	self.durationLbl.text = [NSString stringWithFormat:@"单次点击时长: %.4f s", self.clickDuration];
+	[self clampIntervalToDuration];
+	[self saveSettings];
+	if (self.isRunning) {
         // 重启定时器以应用新间隔
         [self stopClicking];
         [self startClicking];
@@ -462,9 +513,13 @@
             // ZSFakeTouch 支持多点，循环快速触发即可
             CGPoint point = CGPointMake(model.x, model.y);
             [ZSFakeTouch beginTouchWithPoint:point];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.03 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [ZSFakeTouch endTouchWithPoint:point];
-            });
+			if (self.clickDuration > 0) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.clickDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+					[ZSFakeTouch endTouchWithPoint:point];
+				});
+			} else {
+				[ZSFakeTouch endTouchWithPoint:point];
+			}
         }
     }
 }
