@@ -417,9 +417,9 @@ static const CGFloat kDurationStep = 0.001;
 }
 
 - (void)intervalChanged:(UISlider *)slider {
-    float oldValue = slider.value;
-    [slider setValue:roundf(slider.value / kIntervalStep) * kIntervalStep animated:NO];
-    if (oldValue != slider.value) {
+    float newValue = roundf(slider.value / kIntervalStep) * kIntervalStep;
+    if (newValue != slider.value) {
+        [slider setValue:newValue animated:NO];
         self.clickInterval = slider.value;
         self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
         [self saveSettings];
@@ -441,9 +441,9 @@ static const CGFloat kDurationStep = 0.001;
 }
 
 - (void)durationChanged:(UISlider *)slider {
-    float oldValue = slider.value;
-    [slider setValue:roundf(slider.value / kDurationStep) * kDurationStep animated:NO];
-    if (oldValue != slider.value) {
+    float newValue = roundf(slider.value / kDurationStep) * kDurationStep;
+    if (newValue != slider.value) {
+        [slider setValue:newValue animated:NO];
 		self.clickDuration = slider.value;
         self.durationLbl.text = [NSString stringWithFormat:kDurationFormatter, self.clickDuration * 1000];
         [self clampIntervalToDuration];
