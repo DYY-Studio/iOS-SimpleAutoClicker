@@ -213,8 +213,8 @@ static const CGFloat kDurationStep = 0.001;
     [scrollView addSubview:self.intervalLbl];
     
     self.intervalSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY + 30, scrollView.frame.size.width - 40, 30)];
-    self.intervalSlider.minimumValue = self.clickDuration + 0.01;
-    self.intervalSlider.maximumValue = 2.0;
+    self.intervalSlider.minimumValue = self.clickDuration + 0.009;
+    self.intervalSlider.maximumValue = 2.001;
     self.intervalSlider.value = self.clickInterval;
 	self.intervalSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [self.intervalSlider addTarget:self action:@selector(intervalChanged:) forControlEvents:UIControlEventValueChanged];
@@ -432,8 +432,8 @@ static const CGFloat kDurationStep = 0.001;
 }
 
 - (void)clampIntervalToDuration {
-	self.intervalSlider.minimumValue = self.clickDuration + 0.01;
-	if (self.clickDuration + 0.01 > self.clickInterval) {
+	self.intervalSlider.minimumValue = self.clickDuration + 0.009;
+	if (self.clickDuration + 0.01 >= self.clickInterval) {
 		self.clickInterval = self.clickDuration + 0.01;
 		self.intervalSlider.value = self.clickInterval;
 		self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
