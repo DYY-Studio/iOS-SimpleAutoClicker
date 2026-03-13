@@ -417,15 +417,18 @@ static const CGFloat kDurationStep = 0.001;
 }
 
 - (void)intervalChanged:(UISlider *)slider {
+    float oldValue = slider.value;
     [slider setValue:roundf(slider.value / kIntervalStep) * kIntervalStep animated:NO];
-    self.clickInterval = slider.value;
-	self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
-	[self saveSettings];
-    if (self.isRunning) {
-        // 重启定时器以应用新间隔
-        [self stopClicking];
-        [self startClicking];
-    }
+    if (oldValue != slider.value) {
+        self.clickInterval = slider.value;
+        self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
+        [self saveSettings];
+        if (self.isRunning) {
+            // 重启定时器以应用新间隔
+            [self stopClicking];
+            [self startClicking];
+        }
+	}
 }
 
 - (void)clampIntervalToDuration {
@@ -438,16 +441,19 @@ static const CGFloat kDurationStep = 0.001;
 }
 
 - (void)durationChanged:(UISlider *)slider {
+    float oldValue = slider.value;
     [slider setValue:roundf(slider.value / kDurationStep) * kDurationStep animated:NO];
-    self.clickDuration = slider.value;
-	self.durationLbl.text = [NSString stringWithFormat:kDurationFormatter, self.clickDuration * 1000];
-	[self clampIntervalToDuration];
-	[self saveSettings];
-	if (self.isRunning) {
-        // 重启定时器以应用新间隔
-        [self stopClicking];
-        [self startClicking];
-    }
+    if (oldValue != slider.value) {
+		self.clickDuration = slider.value;
+        self.durationLbl.text = [NSString stringWithFormat:kDurationFormatter, self.clickDuration * 1000];
+        [self clampIntervalToDuration];
+        [self saveSettings];
+        if (self.isRunning) {
+            // 重启定时器以应用新间隔
+            [self stopClicking];
+            [self startClicking];
+        }
+	}
 }
 
 - (void)switchChanged:(UISwitch *)sender {
