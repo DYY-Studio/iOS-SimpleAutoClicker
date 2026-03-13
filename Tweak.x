@@ -35,6 +35,11 @@
 @interface FloatingOverlayWindow : UIWindow
 @end
 
+static NSString *const kIntervalFormatter = @"全局点击间隔: %.0f ms";
+static NSString *const kDurationFormatter = @"单次点击时长: %.0f ms";
+static const CGFloat kIntervalStep = 0.005;
+static const CGFloat kDurationStep = 0.001;
+
 @implementation FloatingOverlayWindow
 // 重写 hitTest，实现除了面板和按钮之外的区域点击穿透
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
@@ -203,12 +208,12 @@
     
     // 全局间隔设置
     self.intervalLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 200, 30)];
-    self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
+    self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
     self.intervalLbl.textColor = [UIColor whiteColor];
     [scrollView addSubview:self.intervalLbl];
     
     self.intervalSlider = [[UISlider alloc] initWithFrame:CGRectMake(20, currentY + 30, scrollView.frame.size.width - 40, 30)];
-    self.intervalSlider.minimumValue = 0.05;
+    self.intervalSlider.minimumValue = self.clickDuration + 0.01;
     self.intervalSlider.maximumValue = 2.0;
     self.intervalSlider.value = self.clickInterval;
 	self.intervalSlider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -219,7 +224,7 @@
 
 	// 全局点击时长设置
 	self.durationLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 200, 30)];
-	self.durationLbl.text = [NSString stringWithFormat:@"单次点击时长: %.4f s", self.clickDuration];
+	self.durationLbl.text = [NSString stringWithFormat:kDurationFormatter, self.clickDuration * 1000];
 	self.durationLbl.textColor = [UIColor whiteColor];
 	[scrollView addSubview:self.durationLbl];
 
@@ -235,6 +240,14 @@
     
     // 10个点的设置生成
     for (int i = 0; i < 10; i++) {
+        
+        UIView *line = [[UIView alloc] initWithFrame:CGRectMake(10, currentY, scrollView.frame.size.width - 20, 1)];
+        line.backgroundColor = [UIColor darkGrayColor];
+		line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [scrollView addSubview:line];
+        
+        currentY += 20;
+
 		TapPointModel *model = self.points[i];
 
         UILabel *titleLbl = [[UILabel alloc] initWithFrame:CGRectMake(20, currentY, 100, 30)];
@@ -292,13 +305,6 @@
 		model.ySlider = ySlider;
         
         currentY += 40;
-        
-        UIView *line = [[UIView alloc] initWithFrame:CGRectMake(10, currentY, scrollView.frame.size.width - 20, 1)];
-        line.backgroundColor = [UIColor darkGrayColor];
-		line.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        [scrollView addSubview:line];
-        
-        currentY += 20;
     }
     scrollView.contentSize = CGSizeMake(scrollView.frame.size.width, currentY);
     
@@ -411,8 +417,9 @@
 }
 
 - (void)intervalChanged:(UISlider *)slider {
+    [slider setValue:roundf(slider.value / kIntervalStep) * kIntervalStep animated:NO];
     self.clickInterval = slider.value;
-	self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
+	self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
 	[self saveSettings];
     if (self.isRunning) {
         // 重启定时器以应用新间隔
@@ -423,16 +430,17 @@
 
 - (void)clampIntervalToDuration {
 	self.intervalSlider.minimumValue = self.clickDuration + 0.01;
-	if (self.clickDuration >= self.clickInterval) {
+	if (self.clickDuration + 0.01 > self.clickInterval) {
 		self.clickInterval = self.clickDuration + 0.01;
 		self.intervalSlider.value = self.clickInterval;
-		self.intervalLbl.text = [NSString stringWithFormat:@"全局点击间隔: %.2f s", self.clickInterval];
+		self.intervalLbl.text = [NSString stringWithFormat:kIntervalFormatter, self.clickInterval * 1000];
 	}
 }
 
 - (void)durationChanged:(UISlider *)slider {
+    [slider setValue:roundf(slider.value / kDurationStep) * kDurationStep animated:NO];
     self.clickDuration = slider.value;
-	self.durationLbl.text = [NSString stringWithFormat:@"单次点击时长: %.4f s", self.clickDuration];
+	self.durationLbl.text = [NSString stringWithFormat:kDurationFormatter, self.clickDuration * 1000];
 	[self clampIntervalToDuration];
 	[self saveSettings];
 	if (self.isRunning) {
